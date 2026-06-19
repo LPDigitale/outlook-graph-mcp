@@ -1,0 +1,26 @@
+[project]
+name = "outlook-graph-mcp"
+version = "0.1.0"
+description = "Serveur MCP pour configurer Outlook via Microsoft Graph (dossiers, catégories, règles, messages, paramètres de boîte) — permissions déléguées, /me uniquement. Local (stdio) ou hébergé (HTTP/Azure)."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Relation Digitale" }]
+dependencies = [
+    "mcp>=1.2.0",
+    "msal>=1.28.0",
+    "msal-extensions>=1.1.0",
+    "httpx>=0.27.0",
+    "uvicorn>=0.30.0",
+    "azure-identity>=1.17.0",
+    "azure-keyvault-secrets>=4.8.0",
+]
+
+[project.scripts]
+outlook-graph-mcp = "outlook_graph_mcp.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/outlook_graph_mcp"]

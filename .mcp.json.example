@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "outlook-graph": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "D:\\Audits\\outlook-graph-mcp",
+        "outlook-graph-mcp"
+      ],
+      "env": {
+        "OUTLOOK_MCP_CLIENT_ID": "VOTRE_CLIENT_ID",
+        "OUTLOOK_MCP_TENANT_ID": "VOTRE_TENANT_ID"
+      }
+    }
+  }
+}
