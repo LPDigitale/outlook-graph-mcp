@@ -42,7 +42,7 @@ azd env set AZURE_LOCATION       francecentral
 azd env set OUTLOOK_MCP_CLIENT_ID  <ID d'application>
 azd env set OUTLOOK_MCP_TENANT_ID  <ID de locataire>
 azd env set OUTLOOK_MCP_API_KEY    <une clé secrète, voir ci-dessous>
-azd env set OUTLOOK_MCP_IMAGE      ghcr.io/lpdigitale/outlook-graph-mcp:0.1.0
+azd env set OUTLOOK_MCP_IMAGE      ghcr.io/lpdigitale/outlook-graph-mcp@sha256:f93ecccc6ac389f03b0b423516cc53664538656d887bec2496ec9954351621dc
 azd provision
 ```
 **Générer une clé d'API** (à coller dans `OUTLOOK_MCP_API_KEY`) :
@@ -52,6 +52,8 @@ azd provision
 À la fin, notez les **`Outputs`** : `MCP_ENDPOINT` et `OUTLOOK_MCP_KEYVAULT_URL`.
 
 > Le déploiement tire une **image publique** (aucune construction) et ne crée **aucun registre** → coût minimal.
+> L'image est **épinglée par empreinte `@sha256:…` (immuable)** : vous exécutez exactement la version
+> publiée et revue (ici la `v0.1.0`), insensible à toute modification ultérieure d'un tag.
 
 ## 4. Connexion (une seule fois)
 Connecte **votre** compte Microsoft et dépose le jeton dans **votre** Key Vault :
@@ -80,7 +82,7 @@ Vérifiez : demandez à Claude « liste mes dossiers Outlook ».
 - Permissions **déléguées** (`/me` uniquement) : le connecteur agit **en votre nom**, sur **votre** boîte.
 - L'endpoint est protégé par votre **clé d'API** (à garder secrète).
 - **Révoquer** : retirez le consentement de l'app dans Entra ID → le jeton devient inutile.
-- **Mettre à jour** : `azd env set OUTLOOK_MCP_IMAGE ghcr.io/lpdigitale/outlook-graph-mcp:<nouvelle version>` puis `azd provision`.
+- **Mettre à jour** : UNIY publie une nouvelle version (nouveau digest) → `azd env set OUTLOOK_MCP_IMAGE ghcr.io/lpdigitale/outlook-graph-mcp@sha256:<nouveau digest>` puis `azd provision`.
 - **Tout supprimer** : `azd down --purge`.
 
 ## Besoin d'aide ?
