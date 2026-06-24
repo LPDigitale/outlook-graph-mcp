@@ -8,7 +8,14 @@ from pathlib import Path
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 
 # Permissions déléguées requises (consenties au login).
-DEFAULT_SCOPES = ["Mail.ReadWrite", "Mail.Send", "MailboxSettings.ReadWrite"]
+# Les *.Shared permettent d'accéder aux boîtes partagées/déléguées (v0.2.0).
+DEFAULT_SCOPES = [
+    "Mail.ReadWrite",
+    "Mail.Send",
+    "MailboxSettings.ReadWrite",
+    "Mail.ReadWrite.Shared",
+    "Mail.Send.Shared",
+]
 
 
 def _truthy(value: str | None) -> bool:

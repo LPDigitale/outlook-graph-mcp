@@ -1,7 +1,10 @@
 """Serveur MCP Outlook : tous les outils de configuration via Microsoft Graph.
 
-Toutes les actions s'exécutent sur la boîte de l'utilisateur connecté (/me),
-avec les permissions déléguées consenties au login.
+Par défaut, agit sur la boîte de l'utilisateur connecté (/me). La plupart des outils
+acceptent un paramètre `mailbox` (adresse e-mail) pour cibler une BOÎTE PARTAGÉE/DÉLÉGUÉE
+(/users/{mailbox}) à laquelle le compte a accès — nécessite les scopes `Mail.ReadWrite.Shared`
+/ `Mail.Send.Shared`. Les paramètres de boîte (mailboxSettings) restent sur /me (Microsoft ne
+permet pas de les modifier sur une boîte partagée en accès délégué).
 """
 from __future__ import annotations
 
@@ -17,12 +20,14 @@ from .config import Config, load_config
 from .graph import GraphClient
 
 INSTRUCTIONS = (
-    "Configure la boîte Outlook de l'utilisateur via Microsoft Graph (/me) : dossiers, "
-    "catégories, règles de boîte de réception, messages (lire/envoyer/déplacer/classer), "
-    "et paramètres de boîte (réponses automatiques, fuseau, langue). "
-    "Les dossiers réservés acceptent leur nom : inbox, drafts, sentitems, deleteditems, "
-    "junkemail, archive, outbox. Si un outil renvoie « lancez d'abord la connexion », "
-    "l'utilisateur doit exécuter la commande `login` une fois en terminal."
+    "Pilote la messagerie Outlook via Microsoft Graph. Par défaut, agit sur la boîte de "
+    "l'utilisateur connecté. La plupart des outils acceptent un paramètre `mailbox` "
+    "(adresse e-mail) pour cibler une BOÎTE PARTAGÉE/DÉLÉGUÉE à laquelle le compte a accès "
+    "(messages, dossiers, catégories, règles, envoi). Les PARAMÈTRES de boîte "
+    "(get_mailbox_settings, set_automatic_replies, update_mailbox_settings) ne s'appliquent "
+    "qu'à la boîte connectée — ils ne ciblent pas les boîtes partagées (limite Microsoft). "
+    "Dossiers réservés : inbox, drafts, sentitems, deleteditems, junkemail, archive, outbox. "
+    "Si un outil renvoie « lancez d'abord la connexion », exécuter `login` une fois en terminal."
 )
 
 # Pour le transport HTTP (hébergé) : écoute sur toutes les interfaces, mode stateless
@@ -62,6 +67,11 @@ def get_auth() -> Authenticator:
     return _auth
 
 
+def _base(mailbox: str | None = None) -> str:
+    """Préfixe de chemin Graph : /users/{boîte} pour une boîte partagée/déléguée, sinon /me."""
+    return f"/users/{mailbox}" if mailbox else "/me"
+
+
 # ============================================================================
 # Diagnostic
 # ============================================================================
@@ -78,42 +88,45 @@ _FOLDER_SELECT = "id,displayName,parentFolderId,childFolderCount,unreadItemCount
 
 
 @mcp.tool()
-def list_mail_folders(top: int = 100, include_hidden: bool = False) -> list[dict]:
-    """Liste les dossiers de courrier racine (GET /me/mailFolders)."""
+def list_mail_folders(top: int = 100, include_hidden: bool = False, mailbox: str | None = None) -> list[dict]:
+    """Liste les dossiers de courrier racine (GET /me|/users/{mailbox}/mailFolders).
+    mailbox : adresse d'une boîte partagée (sinon la boîte connectée)."""
     params: dict = {"$top": min(top, 100), "$select": _FOLDER_SELECT}
     if include_hidden:
         params["includeHiddenFolders"] = "true"
-    return g().get_paged("/me/mailFolders", params=params, max_items=top)
+    return g().get_paged(f"{_base(mailbox)}/mailFolders", params=params, max_items=top)
 
 
 @mcp.tool()
-def list_child_folders(folder_id: str, top: int = 100) -> list[dict]:
-    """Liste les sous-dossiers d'un dossier (GET /me/mailFolders/{id}/childFolders)."""
+def list_child_folders(folder_id: str, top: int = 100, mailbox: str | None = None) -> list[dict]:
+    """Liste les sous-dossiers d'un dossier (…/mailFolders/{id}/childFolders).
+    mailbox : adresse d'une boîte partagée (sinon la boîte connectée)."""
     params = {"$top": min(top, 100), "$select": _FOLDER_SELECT}
-    return g().get_paged(f"/me/mailFolders/{folder_id}/childFolders", params=params, max_items=top)
+    return g().get_paged(f"{_base(mailbox)}/mailFolders/{folder_id}/childFolders", params=params, max_items=top)
 
 
 @mcp.tool()
-def create_mail_folder(display_name: str, parent_folder_id: str | None = None) -> dict:
-    """Crée un dossier. Racine : POST /me/mailFolders. Sous-dossier : POST /me/mailFolders/{parent}/childFolders.
-    parent_folder_id accepte un id ou un nom réservé (inbox, archive…)."""
+def create_mail_folder(display_name: str, parent_folder_id: str | None = None, mailbox: str | None = None) -> dict:
+    """Crée un dossier (racine ou sous-dossier). parent_folder_id accepte un id ou un nom réservé.
+    mailbox : adresse d'une boîte partagée (sinon la boîte connectée)."""
     body = {"displayName": display_name}
     if parent_folder_id:
-        return g().post(f"/me/mailFolders/{parent_folder_id}/childFolders", json=body)
-    return g().post("/me/mailFolders", json=body)
+        return g().post(f"{_base(mailbox)}/mailFolders/{parent_folder_id}/childFolders", json=body)
+    return g().post(f"{_base(mailbox)}/mailFolders", json=body)
 
 
 @mcp.tool()
-def rename_mail_folder(folder_id: str, new_name: str) -> dict:
-    """Renomme un dossier (PATCH /me/mailFolders/{id})."""
-    return g().patch(f"/me/mailFolders/{folder_id}", json={"displayName": new_name})
+def rename_mail_folder(folder_id: str, new_name: str, mailbox: str | None = None) -> dict:
+    """Renomme un dossier (PATCH …/mailFolders/{id}). mailbox : boîte partagée optionnelle."""
+    return g().patch(f"{_base(mailbox)}/mailFolders/{folder_id}", json={"displayName": new_name})
 
 
 @mcp.tool()
-def delete_mail_folder(folder_id: str) -> str:
-    """Supprime un dossier ET son contenu (DELETE /me/mailFolders/{id}).
-    ⚠️ Action destructive et définitive — demander confirmation à l'utilisateur avant d'appeler."""
-    g().delete(f"/me/mailFolders/{folder_id}")
+def delete_mail_folder(folder_id: str, mailbox: str | None = None) -> str:
+    """Supprime un dossier ET son contenu (DELETE …/mailFolders/{id}).
+    ⚠️ Action destructive et définitive — demander confirmation avant d'appeler.
+    mailbox : boîte partagée optionnelle."""
+    g().delete(f"{_base(mailbox)}/mailFolders/{folder_id}")
     return "Dossier supprimé."
 
 
@@ -124,9 +137,11 @@ def list_folder_messages(
     search: str | None = None,
     filter: str | None = None,
     order_by: str = "receivedDateTime desc",
+    mailbox: str | None = None,
 ) -> list[dict]:
-    """Voir le contenu d'un dossier (GET /me/mailFolders/{id}/messages).
-    folder_id accepte un id ou un nom réservé. search et filter/order_by ne se combinent pas."""
+    """Voir le contenu d'un dossier (…/mailFolders/{id}/messages).
+    folder_id accepte un id ou un nom réservé. search et filter/order_by ne se combinent pas.
+    mailbox : adresse d'une boîte partagée (sinon la boîte connectée)."""
     params: dict = {
         "$top": min(top, 50),
         "$select": "id,subject,from,receivedDateTime,isRead,importance,hasAttachments,categories,flag",
@@ -137,7 +152,7 @@ def list_folder_messages(
         params["$orderby"] = order_by
         if filter:
             params["$filter"] = filter
-    return g().get_paged(f"/me/mailFolders/{folder_id}/messages", params=params, max_items=top)
+    return g().get_paged(f"{_base(mailbox)}/mailFolders/{folder_id}/messages", params=params, max_items=top)
 
 
 # ============================================================================
@@ -176,34 +191,34 @@ def _color(value: str | None) -> str:
 
 
 @mcp.tool()
-def list_categories() -> list[dict]:
-    """Liste les catégories Outlook (GET /me/outlook/masterCategories)."""
-    return g().get_paged("/me/outlook/masterCategories", max_items=200)
+def list_categories(mailbox: str | None = None) -> list[dict]:
+    """Liste les catégories Outlook (…/outlook/masterCategories). mailbox : boîte partagée optionnelle."""
+    return g().get_paged(f"{_base(mailbox)}/outlook/masterCategories", max_items=200)
 
 
 @mcp.tool()
-def create_category(display_name: str, color: str = "red") -> dict:
-    """Crée une catégorie avec couleur (POST /me/outlook/masterCategories).
-    color : nom (red, vert, bleu…) ou presetN (preset0..preset24)."""
+def create_category(display_name: str, color: str = "red", mailbox: str | None = None) -> dict:
+    """Crée une catégorie avec couleur (POST …/outlook/masterCategories).
+    color : nom (red, vert, bleu…) ou presetN. mailbox : boîte partagée optionnelle."""
     return g().post(
-        "/me/outlook/masterCategories",
+        f"{_base(mailbox)}/outlook/masterCategories",
         json={"displayName": display_name, "color": _color(color)},
     )
 
 
 @mcp.tool()
-def update_category(category_id: str, color: str) -> dict:
-    """Modifie la couleur d'une catégorie (PATCH /me/outlook/masterCategories/{id})."""
-    return g().patch(f"/me/outlook/masterCategories/{category_id}", json={"color": _color(color)})
+def update_category(category_id: str, color: str, mailbox: str | None = None) -> dict:
+    """Modifie la couleur d'une catégorie (PATCH …/outlook/masterCategories/{id}). mailbox optionnel."""
+    return g().patch(f"{_base(mailbox)}/outlook/masterCategories/{category_id}", json={"color": _color(color)})
 
 
 # ============================================================================
 # ⚙️ Règles de boîte de réception
 # ============================================================================
 @mcp.tool()
-def list_inbox_rules() -> list[dict]:
-    """Liste les règles (GET /me/mailFolders/inbox/messageRules)."""
-    return g().get_paged("/me/mailFolders/inbox/messageRules", max_items=200)
+def list_inbox_rules(mailbox: str | None = None) -> list[dict]:
+    """Liste les règles (…/mailFolders/inbox/messageRules). mailbox : boîte partagée optionnelle."""
+    return g().get_paged(f"{_base(mailbox)}/mailFolders/inbox/messageRules", max_items=200)
 
 
 @mcp.tool()
@@ -214,13 +229,15 @@ def create_inbox_rule(
     sequence: int = 1,
     is_enabled: bool = True,
     exceptions: dict | None = None,
+    mailbox: str | None = None,
 ) -> dict:
-    """Crée une règle de tri/transfert/catégorisation (POST /me/mailFolders/inbox/messageRules).
+    """Crée une règle de tri/transfert/catégorisation (POST …/mailFolders/inbox/messageRules).
 
     conditions / actions / exceptions = objets Graph (messageRulePredicates / messageRuleActions).
     Exemple actions : {"moveToFolder": "<folderId>", "markAsRead": true,
                        "assignCategories": ["Travail"], "stopProcessingRules": true}
     Exemple conditions : {"senderContains": ["@client.com"]}  ou  {"subjectContains": ["Facture"]}.
+    mailbox : boîte partagée optionnelle (peut nécessiter des droits étendus).
     """
     body: dict = {
         "displayName": display_name,
@@ -232,21 +249,21 @@ def create_inbox_rule(
         body["conditions"] = conditions
     if exceptions:
         body["exceptions"] = exceptions
-    return g().post("/me/mailFolders/inbox/messageRules", json=body)
+    return g().post(f"{_base(mailbox)}/mailFolders/inbox/messageRules", json=body)
 
 
 @mcp.tool()
-def update_inbox_rule(rule_id: str, changes: dict) -> dict:
-    """Modifie / active / désactive une règle (PATCH /me/mailFolders/inbox/messageRules/{id}).
+def update_inbox_rule(rule_id: str, changes: dict, mailbox: str | None = None) -> dict:
+    """Modifie / active / désactive une règle (PATCH …/messageRules/{id}).
     changes : displayName, isEnabled, sequence, conditions, actions, exceptions.
-    Activer/désactiver : {"isEnabled": true|false}."""
-    return g().patch(f"/me/mailFolders/inbox/messageRules/{rule_id}", json=changes)
+    mailbox : boîte partagée optionnelle."""
+    return g().patch(f"{_base(mailbox)}/mailFolders/inbox/messageRules/{rule_id}", json=changes)
 
 
 @mcp.tool()
-def delete_inbox_rule(rule_id: str) -> str:
-    """Supprime une règle (DELETE /me/mailFolders/inbox/messageRules/{id})."""
-    g().delete(f"/me/mailFolders/inbox/messageRules/{rule_id}")
+def delete_inbox_rule(rule_id: str, mailbox: str | None = None) -> str:
+    """Supprime une règle (DELETE …/messageRules/{id}). mailbox : boîte partagée optionnelle."""
+    g().delete(f"{_base(mailbox)}/mailFolders/inbox/messageRules/{rule_id}")
     return "Règle supprimée."
 
 
@@ -282,10 +299,11 @@ def list_messages(
     filter: str | None = None,
     order_by: str = "receivedDateTime desc",
     select: str | None = None,
+    mailbox: str | None = None,
 ) -> list[dict]:
-    """Rechercher / lister des messages (GET /me/messages).
-    search = recherche plein texte (sujet, corps, expéditeur). filter = expression $filter OData.
-    Note : search et filter/order_by ne se combinent pas côté Graph."""
+    """Rechercher / lister des messages (…/messages).
+    search = recherche plein texte. filter = expression $filter OData (ne se combine pas avec search).
+    mailbox : adresse d'une boîte partagée (sinon la boîte connectée)."""
     params: dict = {"$top": min(top, 50)}
     params["$select"] = select or (
         "id,subject,from,toRecipients,receivedDateTime,isRead,importance,"
@@ -297,13 +315,15 @@ def list_messages(
         params["$orderby"] = order_by
         if filter:
             params["$filter"] = filter
-    return g().get_paged("/me/messages", params=params, max_items=top)
+    return g().get_paged(f"{_base(mailbox)}/messages", params=params, max_items=top)
 
 
 @mcp.tool()
-def get_message(message_id: str, include_body: bool = True, include_attachments: bool = False) -> dict:
-    """Lire un message complet (GET /me/messages/{id}).
-    include_attachments=True développe les pièces jointes (contenu en base64, peut être volumineux)."""
+def get_message(
+    message_id: str, include_body: bool = True, include_attachments: bool = False, mailbox: str | None = None
+) -> dict:
+    """Lire un message complet (…/messages/{id}).
+    include_attachments=True développe les pièces jointes (base64). mailbox : boîte partagée optionnelle."""
     params: dict = {}
     if include_attachments:
         params["$expand"] = "attachments"
@@ -312,7 +332,7 @@ def get_message(message_id: str, include_body: bool = True, include_attachments:
             "id,subject,from,toRecipients,ccRecipients,receivedDateTime,isRead,"
             "importance,categories,flag,hasAttachments,bodyPreview"
         )
-    return g().get(f"/me/messages/{message_id}", params=params or None)
+    return g().get(f"{_base(mailbox)}/messages/{message_id}", params=params or None)
 
 
 @mcp.tool()
@@ -322,10 +342,11 @@ def update_message(
     importance: str | None = None,
     categories: list[str] | None = None,
     flag_status: str | None = None,
+    mailbox: str | None = None,
 ) -> dict:
-    """Marquer lu/non lu, importance, classement (catégories), drapeau de suivi (PATCH /me/messages/{id}).
-    importance : low | normal | high. flag_status : notFlagged | flagged | complete.
-    categories : liste de noms (remplace l'existante)."""
+    """Marquer lu/non lu, importance, classement (catégories), drapeau (PATCH …/messages/{id}).
+    importance : low|normal|high. flag_status : notFlagged|flagged|complete.
+    mailbox : boîte partagée optionnelle."""
     body: dict = {}
     if is_read is not None:
         body["isRead"] = is_read
@@ -337,20 +358,20 @@ def update_message(
         body["flag"] = {"flagStatus": flag_status}
     if not body:
         raise ValueError("Aucune modification fournie.")
-    return g().patch(f"/me/messages/{message_id}", json=body)
+    return g().patch(f"{_base(mailbox)}/messages/{message_id}", json=body)
 
 
 @mcp.tool()
-def move_message(message_id: str, destination_folder_id: str) -> dict:
-    """Déplace un message vers un dossier (POST /me/messages/{id}/move).
-    destination_folder_id accepte un id ou un nom réservé (archive, deleteditems, inbox…)."""
-    return g().post(f"/me/messages/{message_id}/move", json={"destinationId": destination_folder_id})
+def move_message(message_id: str, destination_folder_id: str, mailbox: str | None = None) -> dict:
+    """Déplace un message vers un dossier (POST …/messages/{id}/move).
+    destination_folder_id : id ou nom réservé. mailbox : boîte partagée optionnelle."""
+    return g().post(f"{_base(mailbox)}/messages/{message_id}/move", json={"destinationId": destination_folder_id})
 
 
 @mcp.tool()
-def delete_message(message_id: str) -> str:
-    """Supprime un message → Éléments supprimés (DELETE /me/messages/{id})."""
-    g().delete(f"/me/messages/{message_id}")
+def delete_message(message_id: str, mailbox: str | None = None) -> str:
+    """Supprime un message → Éléments supprimés (DELETE …/messages/{id}). mailbox : boîte partagée optionnelle."""
+    g().delete(f"{_base(mailbox)}/messages/{message_id}")
     return "Message déplacé vers les Éléments supprimés."
 
 
@@ -364,9 +385,10 @@ def send_mail(
     bcc: list[str] | None = None,
     attachments: list[str] | None = None,
     save_to_sent: bool = True,
+    mailbox: str | None = None,
 ) -> str:
-    """Envoie un e-mail (POST /me/sendMail).
-    body_type : HTML ou Text. attachments = liste de chemins de fichiers locaux (≤ 3 Mo chacun)."""
+    """Envoie un e-mail (POST …/sendMail). body_type : HTML ou Text. attachments = chemins locaux (≤3 Mo).
+    mailbox : envoie AU NOM d'une boîte partagée (nécessite Mail.Send.Shared + droits SendAs)."""
     message: dict = {
         "subject": subject,
         "body": {"contentType": body_type, "content": body},
@@ -378,24 +400,23 @@ def send_mail(
         message["bccRecipients"] = _recipients(bcc)
     if attachments:
         message["attachments"] = [_file_attachment(p) for p in attachments]
-    g().post("/me/sendMail", json={"message": message, "saveToSentItems": save_to_sent}, expect_json=False)
+    g().post(f"{_base(mailbox)}/sendMail", json={"message": message, "saveToSentItems": save_to_sent}, expect_json=False)
     return "E-mail envoyé."
 
 
 @mcp.tool()
-def reply_message(message_id: str, comment: str, reply_all: bool = False) -> str:
-    """Répondre / Répondre à tous (POST /me/messages/{id}/reply | /replyAll).
-    comment = texte ajouté en haut de la réponse."""
+def reply_message(message_id: str, comment: str, reply_all: bool = False, mailbox: str | None = None) -> str:
+    """Répondre / Répondre à tous (POST …/messages/{id}/reply | /replyAll). mailbox : boîte partagée optionnelle."""
     endpoint = "replyAll" if reply_all else "reply"
-    g().post(f"/me/messages/{message_id}/{endpoint}", json={"comment": comment}, expect_json=False)
+    g().post(f"{_base(mailbox)}/messages/{message_id}/{endpoint}", json={"comment": comment}, expect_json=False)
     return "Réponse envoyée."
 
 
 @mcp.tool()
-def forward_message(message_id: str, to: list[str], comment: str = "") -> str:
-    """Transférer un message (POST /me/messages/{id}/forward)."""
+def forward_message(message_id: str, to: list[str], comment: str = "", mailbox: str | None = None) -> str:
+    """Transférer un message (POST …/messages/{id}/forward). mailbox : boîte partagée optionnelle."""
     g().post(
-        f"/me/messages/{message_id}/forward",
+        f"{_base(mailbox)}/messages/{message_id}/forward",
         json={"comment": comment, "toRecipients": _recipients(to)},
         expect_json=False,
     )
@@ -410,8 +431,9 @@ def create_draft(
     body_type: str = "HTML",
     cc: list[str] | None = None,
     bcc: list[str] | None = None,
+    mailbox: str | None = None,
 ) -> dict:
-    """Crée un brouillon (POST /me/messages). Renvoie l'objet message (avec son id)."""
+    """Crée un brouillon (POST …/messages). Renvoie l'objet message. mailbox : boîte partagée optionnelle."""
     msg: dict = {"subject": subject, "body": {"contentType": body_type, "content": body}}
     if to:
         msg["toRecipients"] = _recipients(to)
@@ -419,37 +441,38 @@ def create_draft(
         msg["ccRecipients"] = _recipients(cc)
     if bcc:
         msg["bccRecipients"] = _recipients(bcc)
-    return g().post("/me/messages", json=msg)
+    return g().post(f"{_base(mailbox)}/messages", json=msg)
 
 
 @mcp.tool()
-def update_draft(message_id: str, changes: dict) -> dict:
-    """Modifie un brouillon (PATCH /me/messages/{id}).
-    changes au format Graph : subject, body {contentType, content}, toRecipients, etc."""
-    return g().patch(f"/me/messages/{message_id}", json=changes)
+def update_draft(message_id: str, changes: dict, mailbox: str | None = None) -> dict:
+    """Modifie un brouillon (PATCH …/messages/{id}). changes au format Graph. mailbox : boîte partagée optionnelle."""
+    return g().patch(f"{_base(mailbox)}/messages/{message_id}", json=changes)
 
 
 @mcp.tool()
-def send_draft(message_id: str) -> str:
-    """Envoie un brouillon existant (POST /me/messages/{id}/send)."""
-    g().post(f"/me/messages/{message_id}/send", expect_json=False)
+def send_draft(message_id: str, mailbox: str | None = None) -> str:
+    """Envoie un brouillon existant (POST …/messages/{id}/send). mailbox : boîte partagée optionnelle."""
+    g().post(f"{_base(mailbox)}/messages/{message_id}/send", expect_json=False)
     return "Brouillon envoyé."
 
 
 @mcp.tool()
-def add_attachment(message_id: str, file_path: str, name: str | None = None) -> dict:
-    """Ajoute une pièce jointe à un message/brouillon (POST /me/messages/{id}/attachments).
-    Fichier ≤ 3 Mo (au-delà, session d'upload requise, non gérée ici)."""
-    return g().post(f"/me/messages/{message_id}/attachments", json=_file_attachment(file_path, name))
+def add_attachment(message_id: str, file_path: str, name: str | None = None, mailbox: str | None = None) -> dict:
+    """Ajoute une pièce jointe à un message/brouillon (POST …/messages/{id}/attachments).
+    Fichier ≤ 3 Mo. mailbox : boîte partagée optionnelle."""
+    return g().post(f"{_base(mailbox)}/messages/{message_id}/attachments", json=_file_attachment(file_path, name))
 
 
 # ============================================================================
-# 🔧 Paramètres de la boîte
+# 🔧 Paramètres de la boîte — UNIQUEMENT la boîte connectée (/me)
 # ============================================================================
+# Microsoft ne permet pas de modifier les mailboxSettings d'une boîte partagée en accès
+# délégué (pas de scope MailboxSettings.Shared) → ces outils restent sur /me.
 @mcp.tool()
 def get_mailbox_settings() -> dict:
-    """Lit les paramètres de la boîte (GET /me/mailboxSettings) :
-    fuseau, langue, formats de date/heure, réponses automatiques, heures de travail."""
+    """Lit les paramètres de VOTRE boîte (GET /me/mailboxSettings) :
+    fuseau, langue, formats, réponses automatiques, heures de travail. (Boîte connectée uniquement.)"""
     return g().get("/me/mailboxSettings")
 
 
@@ -463,11 +486,9 @@ def set_automatic_replies(
     end: str | None = None,
     time_zone: str = "Romance Standard Time",
 ) -> dict:
-    """Réponses automatiques / Absence du bureau (PATCH /me/mailboxSettings → automaticRepliesSetting).
-    status : disabled | alwaysEnabled | scheduled.
-    Pour 'scheduled', fournir start et end au format ISO 'YYYY-MM-DDTHH:MM:SS'.
-    external_audience : none | contactsOnly | all.
-    time_zone : nom de fuseau Windows (ex. 'Romance Standard Time' pour Paris)."""
+    """Réponses automatiques / Absence du bureau (PATCH /me/mailboxSettings). BOÎTE CONNECTÉE uniquement.
+    status : disabled | alwaysEnabled | scheduled. Pour 'scheduled', fournir start et end (ISO).
+    external_audience : none | contactsOnly | all. time_zone : nom Windows (ex. 'Romance Standard Time')."""
     setting: dict = {
         "status": status,
         "externalAudience": external_audience,
@@ -489,9 +510,8 @@ def update_mailbox_settings(
     date_format: str | None = None,
     time_format: str | None = None,
 ) -> dict:
-    """Fuseau horaire, langue, format de date/heure (PATCH /me/mailboxSettings).
-    Ex. time_zone='Romance Standard Time', language_locale='fr-FR',
-    date_format='dd/MM/yyyy', time_format='HH:mm'."""
+    """Fuseau horaire, langue, format de date/heure (PATCH /me/mailboxSettings). BOÎTE CONNECTÉE uniquement.
+    Ex. time_zone='Romance Standard Time', language_locale='fr-FR', date_format='dd/MM/yyyy', time_format='HH:mm'."""
     body: dict = {}
     if time_zone is not None:
         body["timeZone"] = time_zone

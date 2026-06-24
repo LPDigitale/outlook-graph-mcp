@@ -42,7 +42,7 @@ azd env set AZURE_LOCATION       francecentral
 azd env set OUTLOOK_MCP_CLIENT_ID  <ID d'application>
 azd env set OUTLOOK_MCP_TENANT_ID  <ID de locataire>
 azd env set OUTLOOK_MCP_API_KEY    <une clé secrète, voir ci-dessous>
-azd env set OUTLOOK_MCP_IMAGE      ghcr.io/lpdigitale/outlook-graph-mcp@sha256:f93ecccc6ac389f03b0b423516cc53664538656d887bec2496ec9954351621dc
+azd env set OUTLOOK_MCP_IMAGE      ghcr.io/lpdigitale/outlook-graph-mcp@sha256:cb3ac8234fc7c7fc20ecd575d7e43b9e32211c30b7d6b521c4d51ca3261bc52d
 azd provision
 ```
 **Générer une clé d'API** (à coller dans `OUTLOOK_MCP_API_KEY`) :
@@ -53,7 +53,7 @@ azd provision
 
 > Le déploiement tire une **image publique** (aucune construction) et ne crée **aucun registre** → coût minimal.
 > L'image est **épinglée par empreinte `@sha256:…` (immuable)** : vous exécutez exactement la version
-> publiée et revue (ici la `v0.1.0`), insensible à toute modification ultérieure d'un tag.
+> publiée et revue (ici la `v0.2.0`, avec accès aux boîtes partagées), insensible à toute modification d'un tag.
 
 ## 4. Connexion (une seule fois)
 Connecte **votre** compte Microsoft et dépose le jeton dans **votre** Key Vault :
