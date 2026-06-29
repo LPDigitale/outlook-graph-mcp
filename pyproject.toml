@@ -1,6 +1,6 @@
 [project]
 name = "outlook-graph-mcp"
-version = "0.2.0"
+version = "0.2.1"
 description = "Serveur MCP pour configurer Outlook via Microsoft Graph (dossiers, catégories, règles, messages, paramètres de boîte) — permissions déléguées, /me uniquement. Local (stdio) ou hébergé (HTTP/Azure)."
 readme = "README.md"
 requires-python = ">=3.10"

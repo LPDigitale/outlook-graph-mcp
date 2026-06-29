@@ -424,6 +424,53 @@ def forward_message(message_id: str, to: list[str], comment: str = "", mailbox: 
 
 
 @mcp.tool()
+def create_reply_draft(
+    message_id: str,
+    comment: str = "",
+    reply_all: bool = False,
+    mailbox: str | None = None,
+) -> dict:
+    """Crée un BROUILLON de réponse rattaché au fil d'origine (POST …/messages/{id}/createReply
+    ou /createReplyAll) — même conversation, objet « Re: … », historique cité et destinataires
+    repris — SANS l'envoyer. Le brouillon va dans les Brouillons : on le relit et on l'envoie
+    soi-même depuis Outlook (aucun risque d'envoi involontaire). Renvoie l'objet brouillon.
+
+    comment : texte de la réponse, inséré AU-DESSUS de l'historique cité (optionnel).
+    reply_all : True = répondre à tous (createReplyAll) ; False = à l'expéditeur seul (createReply).
+    mailbox : adresse d'une boîte partagée (sinon la boîte connectée).
+    Pour réécrire entièrement le corps HTML, créez le brouillon puis éditez-le avec update_draft
+    (attention : update_draft remplace le corps, donc l'historique cité). Pour ajouter du texte en
+    gardant l'historique, passez plutôt par `comment` ici.
+    """
+    endpoint = "createReplyAll" if reply_all else "createReply"
+    body = {"comment": comment} if comment else None
+    return g().post(f"{_base(mailbox)}/messages/{message_id}/{endpoint}", json=body)
+
+
+@mcp.tool()
+def create_forward_draft(
+    message_id: str,
+    to: list[str] | None = None,
+    comment: str = "",
+    mailbox: str | None = None,
+) -> dict:
+    """Crée un BROUILLON de transfert du message (POST …/messages/{id}/createForward) — contenu
+    d'origine repris — SANS l'envoyer. Le brouillon va dans les Brouillons : on le relit et on
+    l'envoie soi-même depuis Outlook. Renvoie l'objet brouillon.
+
+    to : destinataires du transfert (optionnel — complétables ensuite dans Outlook).
+    comment : texte ajouté au-dessus du message transféré (optionnel).
+    mailbox : adresse d'une boîte partagée (sinon la boîte connectée).
+    """
+    body: dict = {}
+    if comment:
+        body["comment"] = comment
+    if to:
+        body["toRecipients"] = _recipients(to)
+    return g().post(f"{_base(mailbox)}/messages/{message_id}/createForward", json=body or None)
+
+
+@mcp.tool()
 def create_draft(
     to: list[str] | None = None,
     subject: str = "",

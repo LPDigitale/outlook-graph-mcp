@@ -32,9 +32,11 @@ tableau ci-dessous comme un **outil** appelable par Claude.
 | | Déplacer | `move_message` | `POST /me/messages/{id}/move` |
 | | Supprimer | `delete_message` | `DELETE /me/messages/{id}` |
 | | Envoyer (+ pièces jointes) | `send_mail` | `POST /me/sendMail` |
-| | Répondre / Répondre à tous | `reply_message` | `POST …/reply` · `…/replyAll` |
-| | Transférer | `forward_message` | `POST …/forward` |
-| | Brouillon (créer / modifier / envoyer) | `create_draft`, `update_draft`, `send_draft` | `POST`/`PATCH /me/messages` |
+| | Répondre / Répondre à tous (envoi immédiat) | `reply_message` | `POST …/reply` · `…/replyAll` |
+| | Répondre EN BROUILLON, dans le fil (non envoyé) | `create_reply_draft` | `POST …/createReply` · `…/createReplyAll` |
+| | Transférer (envoi immédiat) | `forward_message` | `POST …/forward` |
+| | Transférer EN BROUILLON (non envoyé) | `create_forward_draft` | `POST …/createForward` |
+| | Brouillon nouveau fil (créer / modifier / envoyer) | `create_draft`, `update_draft`, `send_draft` | `POST`/`PATCH /me/messages` |
 | | Ajouter une pièce jointe | `add_attachment` | `POST …/attachments` |
 | 🔧 Paramètres | Réponses automatiques / absence | `set_automatic_replies` | `PATCH /me/mailboxSettings` |
 | | Fuseau, langue, formats | `update_mailbox_settings`, `get_mailbox_settings` | `GET`/`PATCH /me/mailboxSettings` |
